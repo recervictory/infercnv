@@ -517,7 +517,7 @@ setMethod(f="withParallel",
                   # Loop to decrement cores on failure
                   while(!successful && mc.cores >= 1) {
                       tryCatch({
-                          mcmc <- parallel::mclapply(seq_along(obj@cell_gene),
+                          mcmc <- lapply(seq_along(obj@cell_gene),
                                                      FUN = par_func,
                                                      mc.cores = mc.cores)
                           successful <- TRUE  # If mclapply succeeds, set successful to TRUE
