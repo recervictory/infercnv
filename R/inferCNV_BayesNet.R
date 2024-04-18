@@ -359,28 +359,72 @@ setGeneric(name="getProbabilities",
 #' @rdname getProbabilities-method
 #' @aliases getProbabilities
 #' @noRd
+# setMethod(f="getProbabilities",
+#           signature="MCMC_inferCNV",
+#           definition=function(obj, mcmc)
+#           {
+#               ## List holding state probabilities for each CNV
+#               cnv_probabilities <- list()
+#               ## List for combining the chains in each simulation
+#               combined_mcmc <- list()
+#               ## list holding the frequency of epsilon values for each cell line
+#               ##  for each cnv region and subgroup
+#               cell_probabilities <- list()
+
+#               combinedMCMC <-
+#                   for(j in seq_along(mcmc)){
+#                       # combine the chains
+#                       combined_mcmc[[j]] <- do.call(rbind, mcmc[[j]])
+#                       # run function to get probabilities
+#                       ## Thetas
+#                       cnv_probabilities[[j]] <- cnv_prob(combined_mcmc[[j]])
+#                       ## Epsilons
+#                       cell_probabilities[[j]] <- cell_prob(combined_mcmc[[j]], obj)
+#                   }
+#               obj@cnv_probabilities <- cnv_probabilities
+#               obj@cell_probabilities <- cell_probabilities
+#               return(obj)
+#           }
+# )
+
 setMethod(f="getProbabilities",
           signature="MCMC_inferCNV",
           definition=function(obj, mcmc)
           {
+              ## Initialize logging
+              flog.threshold(futile.logger::INFO)  # Set the logging level
+
               ## List holding state probabilities for each CNV
               cnv_probabilities <- list()
               ## List for combining the chains in each simulation
               combined_mcmc <- list()
-              ## list holding the frequency of epsilon values for each cell line
-              ##  for each cnv region and subgroup
+              ## List holding the frequency of epsilon values for each cell line for each cnv region and subgroup
               cell_probabilities <- list()
 
-              combinedMCMC <-
-                  for(j in seq_along(mcmc)){
-                      # combine the chains
+              for(j in seq_along(mcmc)){
+                  # Log the index being processed
+                  flog.info(paste("Processing MCMC chain at index:", j))
+
+                  # Check if the result is a list and non-empty
+                  if (is.list(mcmc[[j]]) && length(mcmc[[j]]) > 0 && all(sapply(mcmc[[j]], is.data.frame))) {
+                      flog.info(paste("Valid MCMC chain found at index:", j, "with", length(mcmc[[j]]), "elements"))
                       combined_mcmc[[j]] <- do.call(rbind, mcmc[[j]])
                       # run function to get probabilities
-                      ## Thetas
                       cnv_probabilities[[j]] <- cnv_prob(combined_mcmc[[j]])
-                      ## Epsilons
                       cell_probabilities[[j]] <- cell_prob(combined_mcmc[[j]], obj)
+                  } else {
+                      # Log error or incomplete data information
+                      flog.warn(paste("Invalid or empty MCMC chain at index:", j))
+                      combined_mcmc[[j]] <- data.frame()  # Use an empty data frame or a predefined structure
+                      cnv_probabilities[[j]] <- list()  # Consider returning NULL or an empty list
+                      cell_probabilities[[j]] <- list()
                   }
+              }
+
+              # Log final statistics
+              flog.info(paste("Total CNV probabilities computed:", length(cnv_probabilities)))
+              flog.info(paste("Total cell probabilities computed:", length(cell_probabilities)))
+
               obj@cnv_probabilities <- cnv_probabilities
               obj@cell_probabilities <- cell_probabilities
               return(obj)
