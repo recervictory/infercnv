@@ -429,54 +429,69 @@ setGeneric(name="withParallel",
 #           }
 # )
 
+
 setMethod(f="withParallel",
           signature="MCMC_inferCNV",
           definition=function(obj) {
-              par_func <- function(i){
-                  tryCatch({
-                      if (getArgs(obj)$quietly == FALSE) {
-                          futile.logger::flog.info(paste("Starting processing for sampling number: ", i))
-                      }
-                      if(!(length(obj@cell_gene[[i]]$Cells) == 0)){
-                          futile.logger::flog.info(paste("Processing cells and genes at index: ", i))
-                          tumor_grouping <- obj@group_id[obj@cell_gene[[i]]$Cells]
-                          gene_exp <- obj@expr.data[obj@cell_gene[[i]]$Genes, obj@cell_gene[[i]]$Cells]
-                          futile.logger::flog.info(paste("Dimensions of gene expression data: ", dim(gene_exp)))
-                          result <- run_gibb_sampling(gene_exp, obj)
-                          futile.logger::flog.info(paste("Completed MCMC sampling for index: ", i))
-                          return(result)
-                      } else {
-                          futile.logger::flog.info(paste("No cells to process at index: ", i))
-                          return(list(NULL))
-                      }
-                  }, error=function(e){
-                      futile.logger::flog.error(paste("Error at index ", i, ": ", toString(e)))
-                      return(list(error=toString(e)))
-                  })
-              }
+              # Define the path for the RDS file
+              rds_path <- "mcmc_results.rds"
 
-              # Start with the maximum number of cores specified in the object's arguments
-              mc.cores <- ifelse(.Platform$OS.type == 'unix', as.integer(getArgs(obj)$CORES), 1)
-              mcmc <- NULL
-              successful <- FALSE
+              # Check if the RDS file already exists
+              if (file.exists(rds_path)) {
+                  # Load the MCMC results from file if it exists
+                  mcmc <- readRDS(rds_path)
+              } else {
+                  # Define the parallel function with error handling
+                  par_func <- function(i){
+                      tryCatch({
+                          if (getArgs(obj)$quietly == FALSE) {
+                              futile.logger::flog.info(paste("Starting processing for sampling number: ", i))
+                          }
+                          if(!(length(obj@cell_gene[[i]]$Cells) == 0)){
+                              futile.logger::flog.info(paste("Processing cells and genes at index: ", i))
+                              tumor_grouping <- obj@group_id[obj@cell_gene[[i]]$Cells]
+                              gene_exp <- obj@expr.data[obj@cell_gene[[i]]$Genes, obj@cell_gene[[i]]$Cells]
+                              futile.logger::flog.info(paste("Dimensions of gene expression data: ", dim(gene_exp)))
+                              result <- run_gibb_sampling(gene_exp, obj)
+                              futile.logger::flog.info(paste("Completed MCMC sampling for index: ", i))
+                              return(result)
+                          } else {
+                              futile.logger::flog.info(paste("No cells to process at index: ", i))
+                              return(list(NULL))
+                          }
+                      }, error=function(e){
+                          futile.logger::flog.error(paste("Error at index ", i, ": ", toString(e)))
+                          return(list(error=toString(e)))
+                      })
+                  }
 
-              # Loop to decrement cores on failure
-              while(!successful && mc.cores >= 1) {
-                  tryCatch({
-                      mcmc <- parallel::mclapply(seq_along(obj@cell_gene),
-                                                 FUN = par_func,
-                                                 mc.cores = mc.cores)
-                      successful <- TRUE  # If mclapply succeeds, set successful to TRUE
-                  }, error=function(e){
-                      futile.logger::flog.error(paste("Error during parallel execution with ", mc.cores, " cores: ", toString(e)))
-                      mc.cores <- mc.cores - 5  # Decrement number of cores by 5
-                      mc.cores <- max(mc.cores, 1)  # Ensure cores do not fall below 1
-                  })
+                  # Start with the maximum number of cores specified in the object's arguments
+                  mc.cores <- ifelse(.Platform$OS.type == 'unix', as.integer(getArgs(obj)$CORES), 1)
+                  mcmc <- NULL
+                  successful <- FALSE
+
+                  # Loop to decrement cores on failure
+                  while(!successful && mc.cores >= 1) {
+                      tryCatch({
+                          mcmc <- parallel::mclapply(seq_along(obj@cell_gene),
+                                                     FUN = par_func,
+                                                     mc.cores = mc.cores)
+                          successful <- TRUE  # If mclapply succeeds, set successful to TRUE
+                      }, error=function(e){
+                          futile.logger::flog.error(paste("Error during parallel execution with ", mc.cores, " cores: ", toString(e)))
+                          mc.cores <- mc.cores - 5  # Decrement number of cores by 5
+                          mc.cores <- max(mc.cores, 1)  # Ensure cores do not fall below 1
+                      })
+                  }
+
+                  # Save the MCMC results to an RDS file
+                  saveRDS(mcmc, rds_path)
               }
 
               return(mcmc)
           }
 )
+
 
 
 #' Run simulations in Non-Parallel mode
